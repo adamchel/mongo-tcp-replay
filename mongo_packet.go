@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/pcap"
 )
@@ -19,7 +18,7 @@ type MongoPacket struct {
 	requestID     uint32
 	responseTo    uint32
 	opCode        uint32
-	message       []byte
+	payload       []byte
 }
 
 func process_packets(filename string) {
@@ -36,8 +35,8 @@ func process_packets(filename string) {
 }
 
 func get_unix_timestamp(packet gopacket.Packet) int64 {
-unixTimestamp:
-	packet.Metadata().CaptureInfo.Timestamp.Unix()
+	unixTimestamp := packet.Metadata().CaptureInfo.Timestamp.Unix()
+	return unixTimestamp
 }
 
 // TODO: separate by src host/port
@@ -53,7 +52,6 @@ func handle_packet(packet gopacket.Packet) MongoPacket {
 		requestID := binary.LittleEndian.Uint32(payload[OFFSET : 2*OFFSET])
 		responseTo := binary.LittleEndian.Uint32(payload[2*OFFSET : 3*OFFSET])
 		opCode := binary.LittleEndian.Uint32(payload[3*OFFSET : 4*OFFSET])
-		message := payload[4*OFFSET : messageLength]
 
 		mongoPacket := MongoPacket{
 			unixTimestamp: unixTimestamp,
@@ -61,7 +59,7 @@ func handle_packet(packet gopacket.Packet) MongoPacket {
 			requestID:     requestID,
 			responseTo:    responseTo,
 			opCode:        opCode,
-			message:       message,
+			payload:       payload,
 		}
 
 		return mongoPacket

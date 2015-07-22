@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"net"
 	"strconv"
-	"encoding/binary"
+	"time"
+	"sync"
 )
 
-/*type MsgHeader struct {
+/*
+
+type MsgHeader struct {
 	messageLength int32 // total message size, including this
 	requestID     int32 // identifier for this message
 	responseTo    int32 // requestID from the original request (used in reponses from db)
@@ -17,22 +20,52 @@ import (
 type OpMsg struct {
     header 		MsgHeader	// standard message header
     message 	string 		// message for the database
-}*/
+}
 
-// TODO: Eventually take a list of packets with time deltas and an epoch, and play them in the
-//		 correct order and time. Currently sends the mongod on host:port an OP_MSG and gets 
-//		 the response.
-func simulate_mongo_connection(host string, port int64, packetList mongoPacket[]) {
-	var conn, error = net.Dial("tcp",  host + ":" + strconv.FormatInt(port, 10))
+*/
+
+type MongoConnection struct {
+	host string
+	port string
+	packetList []MongoPacket
+}
+
+var connectionWaitGroup sync.WaitGroup
+
+func make_connections(mConnection []MongoConnection) {
+	for _, connection in mConnection {
+		connectionWaitGroup.Add(1)
+		simulate_mongo_connection(mConnection)
+	}
+}
+
+func simulate_mongo_connection(mConnection MongoConnection) {
+	defer connectionWaitGroup.Done()
+	var conn, error = net.Dial("tcp", mConnection.host + ":" + mConnection.port)
 	if error != nil {
-		fmt.Printf("Failed to connect to the mongod..\n")
+		fmt.Printf("Failed to connect to the mongod...\n")
 		return
 	}
-	for _, mPacket := range packetList {
-		conn.Write(mPacket.payload)
+	var packetWaitGroup sync.WaitGroup
+	for _, mPacket := range mConnection.packetList {
+		packetWaitGroup.Add(1)
+		go replay(conn, mPacket, packetWaitGroup)
 	}
+}
 
-	var buf = [4096]byte
+func replay(conn net.Conn,
+		    mPacket MongoPacket,
+		    wg sync.WaitGroup) {
+	var readBuffer [4096]byte
+	// Calculate our wait time as the TCP packet unix timestamp delta
+	waitTime := mPacket.unixTimestamp
+	timer := time.NewTimer(time.Duration(waitTime) * time.Millisecond)
+	// Done with set up, but wait for all other replay go routines to be
+	wg.Done()
+	wg.Wait()
+	// Delay write by the time delta
+	<- timer.C
+	conn.Write(mPacket.payload)
 	// Read the tcp reply into a buffer to discard
-	conn.Read(buf[0:])
+	conn.Read(readBuffer[0:])
 }

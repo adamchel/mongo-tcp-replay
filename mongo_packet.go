@@ -33,9 +33,9 @@ func ProcessPackets(pcapFile string,
 		packetMinTimestamp = GetPacketTime(firstPacket)
 		mapHostConnection = make(map[string]*MongoConnection)
 		SendPacket(firstPacket,
-				   &connectionWaitGroup,
-				   mongodHost,
-				   mongodPort)
+			&connectionWaitGroup,
+			mongodHost,
+			mongodPort)
 		for packet := range packetSource.Packets() {
 			SendPacket(packet,
 				&connectionWaitGroup,

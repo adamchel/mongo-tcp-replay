@@ -3,9 +3,8 @@ package main
 import (
 	"fmt"
 	"net"
-	"strconv"
-	"time"
 	"sync"
+	"time"
 )
 
 /*
@@ -25,23 +24,24 @@ type OpMsg struct {
 */
 
 type MongoConnection struct {
-	host string
-	port string
+	host       string
+	port       string
 	packetList []MongoPacket
 }
 
 var connectionWaitGroup sync.WaitGroup
 
 func make_connections(mConnection []MongoConnection) {
-	for _, connection in mConnection {
+	for _, connection := range mConnection {
 		connectionWaitGroup.Add(1)
-		simulate_mongo_connection(mConnection)
+		simulate_mongo_connection(connection)
 	}
 }
 
 func simulate_mongo_connection(mConnection MongoConnection) {
 	defer connectionWaitGroup.Done()
-	var conn, error = net.Dial("tcp", mConnection.host + ":" + mConnection.port)
+	// TODO: from command line args
+	var conn, error = net.Dial("tcp", "localhost:27017")
 	if error != nil {
 		fmt.Printf("Failed to connect to the mongod...\n")
 		return
@@ -54,8 +54,8 @@ func simulate_mongo_connection(mConnection MongoConnection) {
 }
 
 func replay(conn net.Conn,
-		    mPacket MongoPacket,
-		    wg sync.WaitGroup) {
+	mPacket MongoPacket,
+	wg sync.WaitGroup) {
 	var readBuffer [4096]byte
 	// Calculate our wait time as the TCP packet unix timestamp delta
 	waitTime := mPacket.unixTimestamp
@@ -64,7 +64,7 @@ func replay(conn net.Conn,
 	wg.Done()
 	wg.Wait()
 	// Delay write by the time delta
-	<- timer.C
+	<-timer.C
 	conn.Write(mPacket.payload)
 	// Read the tcp reply into a buffer to discard
 	conn.Read(readBuffer[0:])

@@ -5,7 +5,8 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
-	// "strings"
+	"strconv"
+	"strings"
 )
 
 // earliest packet timestamp
@@ -30,10 +31,6 @@ func process_packets(filename string) {
 		for packet := range packetSource.Packets() {
 			handle_packet(packet)
 		}
-
-		// for k, v := range HOST_PACKET_MAP {
-		// 	src := strings.Split(k, ":")
-		// }
 	}
 }
 
@@ -61,15 +58,19 @@ func handle_packet(packet gopacket.Packet) MongoPacket {
 		var srcPort string
 
 		// TODO: other protocols?
-		if (networkLayer.LayerType() == layers.LayerTypeIPv4) {
+		if networkLayer.LayerType() == layers.LayerTypeIPv4 {
 			ip4header := networkLayer.LayerContents()
-			srcIp = string(ip4header[12:16])
+			// convert binary to IP string
+			srcIp = strconv.Itoa(int(ip4header[12])) + "." +
+				strconv.Itoa(int(ip4header[13])) + "." +
+				strconv.Itoa(int(ip4header[14])) + "." +
+				strconv.Itoa(int(ip4header[15]))
 		}
-		if (transportLayer.LayerType() == layers.LayerTypeTCP) {
+		if transportLayer.LayerType() == layers.LayerTypeTCP {
 			tcpHeader := transportLayer.LayerContents()
-			// disgusting hack to be able to use convert uint32 to string
-			tcpHeaderSrcPort := []byte{tcpHeader[0], tcpHeader[1], 0, 0}
-			srcPort = string(binary.BigEndian.Uint16(tcpHeaderSrcPort))
+			// disgusting hack to be able to use convert what should be a uint16 to string
+			tcpHeaderSrcPort := []byte{0, 0, tcpHeader[0], tcpHeader[1]}
+			srcPort = strconv.Itoa(int(binary.BigEndian.Uint32(tcpHeaderSrcPort)))
 		}
 
 		src := srcIp + ":" + srcPort
@@ -78,4 +79,20 @@ func handle_packet(packet gopacket.Packet) MongoPacket {
 		return mongoPacket
 	}
 	return MongoPacket{unixTimestamp: packet.Metadata().CaptureInfo.Timestamp.Unix()}
+}
+
+func make_connection() {
+	mongoConnections := []MongoConnection{}
+	if len(HOST_PACKET_MAP) != 0 {
+		for k, v := range HOST_PACKET_MAP {
+			src := strings.Split(k, ":")
+			mongoConnection := MongoConnection{
+				host:       src[0],
+				port:       src[1],
+				packetList: v,
+			}
+			mongoConnections = append(mongoConnections, mongoConnection)
+		}
+	}
+	make_connections(mongoConnections)
 }

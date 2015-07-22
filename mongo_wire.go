@@ -14,13 +14,12 @@ type MongoConnection struct {
 	mongodHost string
 	mongodPort string
 	packets chan MongoPacket
-	done chan bool
 }
 
 func NewMongoConnection(mongodHost, mongodPort string, bufSize int) (*MongoConnection) {
 	fmt.Printf("Making NewMongoConnection.\n")
 	packets := make(chan MongoPacket, bufSize)
-	return &MongoConnection{mongodHost, mongodPort, packets, make(chan bool)}
+	return &MongoConnection{mongodHost, mongodPort, packets}
 }
     
 func (connection *MongoConnection) Send(packet MongoPacket) {
@@ -28,7 +27,7 @@ func (connection *MongoConnection) Send(packet MongoPacket) {
 }
 
 func (connection *MongoConnection) EOF() {
-	connection.done <- true
+	close(connection.packets)
 }
     
 func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) {
@@ -39,26 +38,12 @@ func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) 
 
 	fmt.Print("Packet send")
     for {
-		select {
-		case packet := <- connection.packets:
-			packetSend <- packet
-		case done := <- connection.done:
-			if(done || !done) {
-				break
-			}
-		}    		
-    }
-
-	// Drain the packets
-	for {
-		select {
-		case packet := <- connection.packets:
-			packetSend <- packet
-		default:
-			// No more packets :)
-			break
+    	packet, more := <-connection.packets
+		if !more {
+			return
 		}
-	}
+		packetSend <- packet
+    }
 }
 
 func startMongoTCPConnection(host, port string, packetChan chan MongoPacket) {

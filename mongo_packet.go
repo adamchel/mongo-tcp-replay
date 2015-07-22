@@ -11,7 +11,7 @@ import (
 )
 
 // Earliest packet timestamp
-var packetMinTimestamp int64
+var packetMinTimestamp time.Time
 
 // Map of sending hosts to MongoConnections
 var mapHostConnection map[string]*MongoConnection
@@ -30,7 +30,7 @@ func ProcessPackets(pcapFile string,
 		var connectionWaitGroup sync.WaitGroup
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		firstPacket := <-packetSource.Packets()
-		packetMinTimestamp = GetUnixTimestamp(firstPacket)
+		packetMinTimestamp = GetPacketTime(firstPacket)
 		mapHostConnection = make(map[string]*MongoConnection)
 		SendPacket(firstPacket,
 				   &connectionWaitGroup,
@@ -49,8 +49,8 @@ func ProcessPackets(pcapFile string,
 	}
 }
 
-func GetUnixTimestamp(packet gopacket.Packet) int64 {
-	return packet.Metadata().CaptureInfo.Timestamp.Unix()
+func GetPacketTime(packet gopacket.Packet) time.Time {
+	return packet.Metadata().CaptureInfo.Timestamp
 }
 
 func SendPacket(packet gopacket.Packet,
@@ -60,13 +60,13 @@ func SendPacket(packet gopacket.Packet,
 	// If packet contains a mongo message
 	if packet.ApplicationLayer() != nil {
 		payload := packet.ApplicationLayer().Payload()
-		delta := GetUnixTimestamp(packet) - packetMinTimestamp
+		delta := GetPacketTime(packet).Sub(packetMinTimestamp)
 
 		// Get timestamp's delta from first packet
 		// Get mongo wire protocol payload
 		mongoPacket := MongoPacket{
 			payload: payload,
-			delta:   time.Duration(delta),
+			delta:   delta,
 		}
 
 		transportLayer := packet.TransportLayer()

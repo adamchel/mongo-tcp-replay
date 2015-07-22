@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var simulationEpoch time.Duration = 0
+var simulationEpoch time.Time
 var epochSet = false
 
 type MongoConnection struct {
@@ -80,11 +80,13 @@ func startMongoTCPConnection(host, port string, packetChan chan MongoPacket) {
 		}
 
 		if !epochSet {
-			simulationEpoch = time.Duration(time.Now().UnixNano())
+			simulationEpoch = time.Now()
 			epochSet = true
 		} else {
-			fmt.Printf("Waiting packet with delta %d to mongod!\n", packet.delta)
-			time.Sleep((simulationEpoch + packet.delta) - time.Duration(time.Now().UnixNano()))
+			
+			waitDuration := simulationEpoch.Add(packet.delta).Sub(time.Now())
+			fmt.Printf("Waiting for packet with wait duration %d!\n", waitDuration)
+			time.Sleep(waitDuration)
 		}
 
 		fmt.Printf("Sending packet with delta %d to mongod!\n", packet.delta)

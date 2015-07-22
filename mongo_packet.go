@@ -7,6 +7,7 @@ import (
 	"github.com/google/gopacket/pcap"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // Earliest packet timestamp
@@ -16,8 +17,8 @@ var packetMinTimestamp int64
 var mapHostConnection map[string][]MongoConnection
 
 type MongoPacket struct {
-	unixTimestamp int64
-	payload       []byte
+	delta   time.Duration
+	payload []byte
 }
 
 func ProcessPackets(pcapFile string,
@@ -52,16 +53,16 @@ func SendPacket(packet gopacket.Packet,
 	connectionWaitGroup *sync.WaitGroup,
 	mongodHost string,
 	mongodPort string) {
-	// if packet contains a mongo message
+	// If packet contains a mongo message
 	if packet.ApplicationLayer() != nil {
 		payload := packet.ApplicationLayer().Payload()
-		unixTimestamp := GetUnixTimestamp(packet) - packetMinTimestamp
+		delta := GetUnixTimestamp(packet) - packetMinTimestamp
 
-		// get timestamp's delta from first packet
-		// get mongo wire protocol payload
+		// Get timestamp's delta from first packet
+		// Get mongo wire protocol payload
 		mongoPacket := MongoPacket{
-			payload:       payload,
-			unixTimestamp: unixTimestamp,
+			payload: payload,
+			delta:   time.Duration(delta),
 		}
 
 		transportLayer := packet.TransportLayer()
@@ -70,10 +71,9 @@ func SendPacket(packet gopacket.Packet,
 		var srcIp string
 		var srcPort string
 
-		// TODO: other protocols?
 		if networkLayer.LayerType() == layers.LayerTypeIPv4 {
 			ip4header := networkLayer.LayerContents()
-			// convert binary to IP string
+			// Convert binary to IP string
 			srcIp = strconv.Itoa(int(ip4header[12])) + "." +
 				strconv.Itoa(int(ip4header[13])) + "." +
 				strconv.Itoa(int(ip4header[14])) + "." +
@@ -81,7 +81,7 @@ func SendPacket(packet gopacket.Packet,
 		}
 		if transportLayer.LayerType() == layers.LayerTypeTCP {
 			tcpHeader := transportLayer.LayerContents()
-			// disgusting hack to be able to use convert what should be a uint16 to string
+			// Hack to be able to use convert what should be a uint16 to string
 			tcpHeaderSrcPort := []byte{0, 0, tcpHeader[0], tcpHeader[1]}
 			srcPort = strconv.Itoa(int(binary.BigEndian.Uint32(tcpHeaderSrcPort)))
 		}

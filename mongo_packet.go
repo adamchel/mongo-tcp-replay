@@ -60,7 +60,7 @@ func SendPacket(packet gopacket.Packet,
 	// If packet contains a mongo message
 	if packet.ApplicationLayer() != nil {
 		payload := packet.ApplicationLayer().Payload()
-		delta := GetUnixTimestamp(packet) - packetMinTimestamp
+		delta := ApplyTransformations(GetUnixTimestamp(packet) - packetMinTimestamp)
 
 		// Get timestamp's delta from first packet
 		// Get mongo wire protocol payload

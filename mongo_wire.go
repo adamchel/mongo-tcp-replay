@@ -19,27 +19,20 @@ type OpMsg struct {
     message 	string 		// message for the database
 }*/
 
-func playback_mongo_connection(host string, port int64) {
+// TODO: Eventually take a list of packets with time deltas and an epoch, and play them in the
+//		 correct order and time. Currently sends the mongod on host:port an OP_MSG and gets 
+//		 the response.
+func simulate_mongo_connection(host string, port int64) {
 	var conn, error = net.Dial("tcp",  host + ":" + strconv.FormatInt(port, 10))
 	if error != nil {
-		fmt.Printf("Failed to connect to the mongod.\n")
+		fmt.Printf("Failed to connect to the mongod..\n")
 		return
 	}
 	const BUFFER_LENGTH = 1024
 	var buf [BUFFER_LENGTH]byte
 
-	/*var test_msg = OpMsg{
-		MsgHeader: {
-			messageLength: 16 + 22,
-			requestID:	   90135,
-			responseTo:	   0,
-			opCode:		   1000,
-		},
-
-		message: "This is a test OP_MSG",
-	}*/
-
-	var message = "This is a test OP_MSG.\x00"
+	// Temporary hacky test.
+	var message = "Are you alive?\x00"
 
 	var messageLength uint32 = 16 + uint32(len(message))
 	var requestID 	uint32 	= 90135
@@ -59,7 +52,7 @@ func playback_mongo_connection(host string, port int64) {
 	copy(buf[i:], message[:])
 	i += len(message)
 
-	fmt.Printf("len: %d, payload: %s\n", len(buf[:i]), buf[:i])
+	fmt.Printf("Message to mongod: %s\n", buf[:i])
 
 	conn.Write(buf[:i])
 
@@ -70,24 +63,9 @@ func playback_mongo_connection(host string, port int64) {
 		return
 	}
 
-	fmt.Printf("num_read: %d, response: %s\n", n_read, buf[:n_read])
+	fmt.Printf("Response from mongod: response: %s\n", buf[:n_read])
+	// End temporary hacky test.
 
 	// TODO: send a collection of payloads in proper time order
 
 }
-
-/*func playback_workload() {
-	const BUFFER_LENGTH = 1024
-
-	var conn, error = net.Dial("tcp", "localhost:27017")
-
-	if error != nil {
-		fmt.Printf("Failed to connect to the mongod.\n")
-		return
-	}
-	var buf [BUFFER_LENGTH]byte
-
-	conn.Read(buf[0:])
-	fmt.Printf("Socket output: %s\n", buf)
-
-}*/

@@ -23,11 +23,89 @@ type OpMsg struct {
 
 */
 
+var simulationEpoch Duration
+epochSet		:= false
+
 type MongoConnection struct {
-	host       string
-	port       string
-	packetList []MongoPacket
+	mongodHost string
+	mongodPort string
+	packets chan MongoPacket
+	done chan bool
 }
+
+func NewMongoConnection(mongodHost, mongodPort string, bufSize int) (*MongoConnection) {
+	packets := make(chan MongoPacket, bufSize)
+	isDone = false
+	return &MongoConnection{mongodHost, mongodPort, packets, make(chan bool)}
+}
+    
+func (connection *MongoConnection) Send(packet MongoPacket) {
+	connection.packets <- packet
+}
+
+func (connection *MongoConnection) EOF() {
+	done <- true
+}
+    
+func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) {
+	defer waitGroup.Done()
+	packetSend := make(chan MongoPacket)
+	defer close(packetSend)
+	go startMongoTCPConnection(connection.mongodHost, connection.mongodPort, packetSend)
+
+    for {
+		select {
+		case packet := <-packets:
+			packetSend <- packet
+		case done := <-done:
+			break
+		}    		
+    }
+
+	// Drain the packets
+	for {
+		select {
+		case packet := <-packets:
+			packetSend <- packet
+		default:
+			// No more packets :)
+			break
+		}
+	}
+}
+
+func startMongoTCPConnection(host, port string, packetChan chan<- MongoPacket) {
+	var conn, error = net.Dial("tcp", host + ":" + port)
+	if error != nil {
+		fmt.Printf("Failed to connect to the mongod...\n")
+		panic(error)
+	}
+	defer conn.Close()
+
+	var readBuffer [4096]byte
+
+	for {
+		packet, isOpen := <-packetChan
+		if !isOpen {
+			return
+		}
+
+		if !epochSet {
+			simulationEpoch = time.Now().UnixNano()
+			epochSet = true
+		} else {
+			time.Sleep((simulationEpoch + packet.delta) - time.Now().UnixNano())
+		}
+
+		conn.Write(packet.payload)
+
+		// Read the tcp reply into a buffer to discard
+		conn.Read(readBuffer[0:])
+	}
+}
+
+var conn = NewMongoConnection(asdfa)
+conn.ExecuteConnection()
 
 var connectionWaitGroup sync.WaitGroup
 
@@ -56,7 +134,7 @@ func simulate_mongo_connection(mConnection MongoConnection) {
 func replay(conn net.Conn,
 	mPacket MongoPacket,
 	wg sync.WaitGroup) {
-	var readBuffer [4096]byte
+	
 	// Calculate our wait time as the TCP packet unix timestamp delta
 	waitTime := mPacket.unixTimestamp
 	timer := time.NewTimer(time.Duration(waitTime) * time.Millisecond)

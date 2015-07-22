@@ -23,8 +23,8 @@ type OpMsg struct {
 
 */
 
-var simulationEpoch Duration
-epochSet		:= false
+var simulationEpoch time.Duration = 0
+var epochSet = false
 
 type MongoConnection struct {
 	mongodHost string
@@ -35,7 +35,6 @@ type MongoConnection struct {
 
 func NewMongoConnection(mongodHost, mongodPort string, bufSize int) (*MongoConnection) {
 	packets := make(chan MongoPacket, bufSize)
-	isDone = false
 	return &MongoConnection{mongodHost, mongodPort, packets, make(chan bool)}
 }
     
@@ -44,7 +43,7 @@ func (connection *MongoConnection) Send(packet MongoPacket) {
 }
 
 func (connection *MongoConnection) EOF() {
-	done <- true
+	connection.done <- true
 }
     
 func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) {
@@ -55,17 +54,19 @@ func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) 
 
     for {
 		select {
-		case packet := <-packets:
+		case packet := <- connection.packets:
 			packetSend <- packet
-		case done := <-done:
-			break
+		case done := <- connection.done:
+			if(done || !done) {
+				break
+			}
 		}    		
     }
 
 	// Drain the packets
 	for {
 		select {
-		case packet := <-packets:
+		case packet := <- connection.packets:
 			packetSend <- packet
 		default:
 			// No more packets :)
@@ -74,7 +75,7 @@ func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) 
 	}
 }
 
-func startMongoTCPConnection(host, port string, packetChan chan<- MongoPacket) {
+func startMongoTCPConnection(host, port string, packetChan chan MongoPacket) {
 	var conn, error = net.Dial("tcp", host + ":" + port)
 	if error != nil {
 		fmt.Printf("Failed to connect to the mongod...\n")
@@ -85,17 +86,19 @@ func startMongoTCPConnection(host, port string, packetChan chan<- MongoPacket) {
 	var readBuffer [4096]byte
 
 	for {
-		packet, isOpen := <-packetChan
+		packet, isOpen :=<-packetChan
 		if !isOpen {
 			return
 		}
 
 		if !epochSet {
-			simulationEpoch = time.Now().UnixNano()
+			simulationEpoch = time.Duration(time.Now().UnixNano())
 			epochSet = true
 		} else {
-			time.Sleep((simulationEpoch + packet.delta) - time.Now().UnixNano())
+			time.Sleep((simulationEpoch + packet.delta) - time.Duration(time.Now().UnixNano()))
 		}
+
+		fmt.Printf("Sending packet with delta %d to mongod!", packet.delta)
 
 		conn.Write(packet.payload)
 
@@ -104,19 +107,14 @@ func startMongoTCPConnection(host, port string, packetChan chan<- MongoPacket) {
 	}
 }
 
-var conn = NewMongoConnection(asdfa)
-conn.ExecuteConnection()
-
-var connectionWaitGroup sync.WaitGroup
-
-func make_connections(mConnection []MongoConnection) {
+/*func make_connections(mConnection []MongoConnection) {
 	for _, connection := range mConnection {
 		connectionWaitGroup.Add(1)
 		simulate_mongo_connection(connection)
 	}
-}
+}*/
 
-func simulate_mongo_connection(mConnection MongoConnection) {
+/*func simulate_mongo_connection(mConnection MongoConnection) {
 	defer connectionWaitGroup.Done()
 	// TODO: from command line args
 	var conn, error = net.Dial("tcp", "localhost:27017")
@@ -129,9 +127,9 @@ func simulate_mongo_connection(mConnection MongoConnection) {
 		packetWaitGroup.Add(1)
 		go replay(conn, mPacket, packetWaitGroup)
 	}
-}
+}*/
 
-func replay(conn net.Conn,
+/*func replay(conn net.Conn,
 	mPacket MongoPacket,
 	wg sync.WaitGroup) {
 	
@@ -146,4 +144,4 @@ func replay(conn net.Conn,
 	conn.Write(mPacket.payload)
 	// Read the tcp reply into a buffer to discard
 	conn.Read(readBuffer[0:])
-}
+}*/

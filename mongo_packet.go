@@ -2,24 +2,21 @@ package main
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	// "strings"
 )
-
-// mongo wire protocol header field offset
-const OFFSET int = 4
 
 // earliest packet timestamp
 var MIN_UNIX_TIMESTAMP int64 = 0
 
+// map of host to packets
+var HOST_PACKET_MAP map[string][]MongoPacket
+
 type MongoPacket struct {
 	unixTimestamp int64
-	messageLength uint32
-	requestID     uint32
-	responseTo    uint32
-	opCode        uint32
-	message       []byte
+	payload       []byte
 }
 
 func process_packets(filename string) {
@@ -29,40 +26,54 @@ func process_packets(filename string) {
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		firstPacket := <-packetSource.Packets()
 		MIN_UNIX_TIMESTAMP = get_unix_timestamp(firstPacket)
+		HOST_PACKET_MAP = make(map[string][]MongoPacket)
 		for packet := range packetSource.Packets() {
 			handle_packet(packet)
 		}
+
+		// for k, v := range HOST_PACKET_MAP {
+		// 	src := strings.Split(k, ":")
+		// }
 	}
 }
 
 func get_unix_timestamp(packet gopacket.Packet) int64 {
-unixTimestamp:
-	packet.Metadata().CaptureInfo.Timestamp.Unix()
+	return packet.Metadata().CaptureInfo.Timestamp.Unix()
 }
 
-// TODO: separate by src host/port
 func handle_packet(packet gopacket.Packet) MongoPacket {
 	// if packet contains a mongo message
 	if packet.ApplicationLayer() != nil {
 		payload := packet.ApplicationLayer().Payload()
+		unixTimestamp := get_unix_timestamp(packet) - MIN_UNIX_TIMESTAMP
 
 		// get timestamp's delta from first packet
 		// get mongo wire protocol payload
-		unixTimestamp := get_unix_timestamp(packet) - MIN_UNIX_TIMESTAMP
-		messageLength := binary.LittleEndian.Uint32(payload[0:OFFSET])
-		requestID := binary.LittleEndian.Uint32(payload[OFFSET : 2*OFFSET])
-		responseTo := binary.LittleEndian.Uint32(payload[2*OFFSET : 3*OFFSET])
-		opCode := binary.LittleEndian.Uint32(payload[3*OFFSET : 4*OFFSET])
-		message := payload[4*OFFSET : messageLength]
-
 		mongoPacket := MongoPacket{
+			payload:       payload,
 			unixTimestamp: unixTimestamp,
-			messageLength: messageLength,
-			requestID:     requestID,
-			responseTo:    responseTo,
-			opCode:        opCode,
-			message:       message,
 		}
+
+		transportLayer := packet.TransportLayer()
+		networkLayer := packet.NetworkLayer()
+
+		var srcIp string
+		var srcPort string
+
+		// TODO: other protocols?
+		if (networkLayer.LayerType() == layers.LayerTypeIPv4) {
+			ip4header := networkLayer.LayerContents()
+			srcIp = string(ip4header[12:16])
+		}
+		if (transportLayer.LayerType() == layers.LayerTypeTCP) {
+			tcpHeader := transportLayer.LayerContents()
+			// disgusting hack to be able to use convert uint32 to string
+			tcpHeaderSrcPort := []byte{tcpHeader[0], tcpHeader[1], 0, 0}
+			srcPort = string(binary.BigEndian.Uint16(tcpHeaderSrcPort))
+		}
+
+		src := srcIp + ":" + srcPort
+		HOST_PACKET_MAP[src] = append(HOST_PACKET_MAP[src], mongoPacket)
 
 		return mongoPacket
 	}

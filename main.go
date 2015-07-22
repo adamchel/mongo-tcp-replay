@@ -1,18 +1,15 @@
 package main
 
 import (
-	// "fmt"
-	// "os"
+	"flag"
 )
 
 func main() {
-	// simulate_mongo_connection("localhost", 27017)
+	pcapFilePtr := flag.String("pcapFile", "workload.pcap", "pcap workload file")
+	mongodHostPtr := flag.String("mongodHost", "localhost", "host address for mongod")
+	mongodPortPtr := flag.String("mongodPort", "27017", "port for mongod")
 
-	// argsWithoutProg := os.Args[1:]
-	// if len(argsWithoutProg) == 1 {
-	// 	process_packets(argsWithoutProg[0])
-	// } else {
-	// 	fmt.Println("please provide a *.pcap filename")
-	// }
-	executor()
+	flag.Parse()
+
+	ProcessPackets(*pcapFilePtr, *mongodHostPtr, *mongodPortPtr)
 }

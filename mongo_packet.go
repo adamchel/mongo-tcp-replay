@@ -6,43 +6,56 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 	"strconv"
-	"strings"
+	"sync"
 )
 
-// earliest packet timestamp
-var MIN_UNIX_TIMESTAMP int64 = 0
+// Earliest packet timestamp
+var packetMinTimestamp int64
 
-// map of host to packets
-var HOST_PACKET_MAP map[string][]MongoPacket
+// Map of sending hosts to MongoConnections
+var mapHostConnection map[string][]MongoConnection
 
 type MongoPacket struct {
 	unixTimestamp int64
 	payload       []byte
 }
 
-func process_packets(filename string) {
-	if handle, err := pcap.OpenOffline(filename); err != nil {
+func ProcessPackets(pcapFile string,
+	mongodHost string,
+	mongodPort string) {
+	if handle, err := pcap.OpenOffline(pcapFile); err != nil {
 		panic(err)
 	} else {
+		var connectionWaitGroup sync.WaitGroup
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		firstPacket := <-packetSource.Packets()
-		MIN_UNIX_TIMESTAMP = get_unix_timestamp(firstPacket)
-		HOST_PACKET_MAP = make(map[string][]MongoPacket)
+		packetMinTimestamp = GetUnixTimestamp(firstPacket)
+		mapHostConnection = make(map[string][]MongoConnection)
 		for packet := range packetSource.Packets() {
-			handle_packet(packet)
+			SendPacket(packet,
+				connectionWaitGroup,
+				mongodHost,
+				mongodPort)
 		}
+		for src, mConnection := range mapHostConnection {
+			mConnection.EOF()
+		}
+		connectionWaitGroup.Wait()
 	}
 }
 
-func get_unix_timestamp(packet gopacket.Packet) int64 {
+func GetUnixTimestamp(packet gopacket.Packet) int64 {
 	return packet.Metadata().CaptureInfo.Timestamp.Unix()
 }
 
-func handle_packet(packet gopacket.Packet) MongoPacket {
+func SendPacket(packet gopacket.Packet,
+	connectionWaitGroup *sync.WaitGroup,
+	mongodHost string,
+	mongodPort string) {
 	// if packet contains a mongo message
 	if packet.ApplicationLayer() != nil {
 		payload := packet.ApplicationLayer().Payload()
-		unixTimestamp := get_unix_timestamp(packet) - MIN_UNIX_TIMESTAMP
+		unixTimestamp := GetUnixTimestamp(packet) - packetMinTimestamp
 
 		// get timestamp's delta from first packet
 		// get mongo wire protocol payload
@@ -74,25 +87,18 @@ func handle_packet(packet gopacket.Packet) MongoPacket {
 		}
 
 		src := srcIp + ":" + srcPort
-		HOST_PACKET_MAP[src] = append(HOST_PACKET_MAP[src], mongoPacket)
 
-		return mongoPacket
-	}
-	return MongoPacket{unixTimestamp: packet.Metadata().CaptureInfo.Timestamp.Unix()}
-}
-
-func make_connection() {
-	mongoConnections := []MongoConnection{}
-	if len(HOST_PACKET_MAP) != 0 {
-		for k, v := range HOST_PACKET_MAP {
-			src := strings.Split(k, ":")
-			mongoConnection := MongoConnection{
-				host:       src[0],
-				port:       src[1],
-				packetList: v,
+		if mConnection, ok := mapHostConnection[src]; ok {
+			mConnection.Send(mongoPacket)
+		} else {
+			connectionWaitGroup.Add(1)
+			mConnection := MongoConnection{
+				mongodHost: mongodHost,
+				mongodPort: mongodPort,
 			}
-			mongoConnections = append(mongoConnections, mongoConnection)
+			mapHostConnection[src] = mConnection
+			go mConnection.ExecuteConnection(connectionWaitGroup)
+			mConnection.Send(mongoPacket)
 		}
 	}
-	make_connections(mongoConnections)
 }

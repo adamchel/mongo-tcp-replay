@@ -7,22 +7,6 @@ import (
 	"time"
 )
 
-/*
-
-type MsgHeader struct {
-	messageLength int32 // total message size, including this
-	requestID     int32 // identifier for this message
-	responseTo    int32 // requestID from the original request (used in reponses from db)
-	opCode        int32 // request type - see table in Wire protocol docs
-}
-
-type OpMsg struct {
-    header 		MsgHeader	// standard message header
-    message 	string 		// message for the database
-}
-
-*/
-
 var simulationEpoch time.Duration = 0
 var epochSet = false
 
@@ -34,6 +18,7 @@ type MongoConnection struct {
 }
 
 func NewMongoConnection(mongodHost, mongodPort string, bufSize int) (*MongoConnection) {
+	fmt.Printf("Making NewMongoConnection.\n")
 	packets := make(chan MongoPacket, bufSize)
 	return &MongoConnection{mongodHost, mongodPort, packets, make(chan bool)}
 }
@@ -87,7 +72,9 @@ func startMongoTCPConnection(host, port string, packetChan chan MongoPacket) {
 	var readBuffer [4096]byte
 
 	for {
+		fmt.Printf("Waiting for a packet from the channel.\n")
 		packet, isOpen :=<-packetChan
+		fmt.Printf("Got packet with delta %d from the channel!\n", packet.delta)
 		if !isOpen {
 			return
 		}
@@ -96,10 +83,11 @@ func startMongoTCPConnection(host, port string, packetChan chan MongoPacket) {
 			simulationEpoch = time.Duration(time.Now().UnixNano())
 			epochSet = true
 		} else {
+			fmt.Printf("Waiting packet with delta %d to mongod!\n", packet.delta)
 			time.Sleep((simulationEpoch + packet.delta) - time.Duration(time.Now().UnixNano()))
 		}
 
-		fmt.Printf("Sending packet with delta %d to mongod!", packet.delta)
+		fmt.Printf("Sending packet with delta %d to mongod!\n", packet.delta)
 
 		conn.Write(packet.payload)
 

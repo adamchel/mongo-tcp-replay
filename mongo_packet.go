@@ -14,7 +14,7 @@ import (
 var packetMinTimestamp int64
 
 // Map of sending hosts to MongoConnections
-var mapHostConnection map[string]MongoConnection
+var mapHostConnection map[string]*MongoConnection
 
 type MongoPacket struct {
 	delta   time.Duration
@@ -31,7 +31,11 @@ func ProcessPackets(pcapFile string,
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 		firstPacket := <-packetSource.Packets()
 		packetMinTimestamp = GetUnixTimestamp(firstPacket)
-		mapHostConnection = make(map[string]MongoConnection)
+		mapHostConnection = make(map[string]*MongoConnection)
+		SendPacket(firstPacket,
+				   &connectionWaitGroup,
+				   mongodHost,
+				   mongodPort)
 		for packet := range packetSource.Packets() {
 			SendPacket(packet,
 				&connectionWaitGroup,
@@ -92,10 +96,7 @@ func SendPacket(packet gopacket.Packet,
 			mConnection.Send(mongoPacket)
 		} else {
 			connectionWaitGroup.Add(1)
-			mConnection := MongoConnection{
-				mongodHost: mongodHost,
-				mongodPort: mongodPort,
-			}
+			mConnection := NewMongoConnection(mongodHost, mongodPort, 100)
 			mapHostConnection[src] = mConnection
 			go mConnection.ExecuteConnection(connectionWaitGroup)
 			mConnection.Send(mongoPacket)

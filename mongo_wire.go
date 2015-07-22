@@ -52,6 +52,7 @@ func (connection *MongoConnection) ExecuteConnection(waitGroup *sync.WaitGroup) 
 	defer close(packetSend)
 	go startMongoTCPConnection(connection.mongodHost, connection.mongodPort, packetSend)
 
+	fmt.Print("Packet send")
     for {
 		select {
 		case packet := <- connection.packets:
@@ -106,42 +107,3 @@ func startMongoTCPConnection(host, port string, packetChan chan MongoPacket) {
 		conn.Read(readBuffer[0:])
 	}
 }
-
-/*func make_connections(mConnection []MongoConnection) {
-	for _, connection := range mConnection {
-		connectionWaitGroup.Add(1)
-		simulate_mongo_connection(connection)
-	}
-}*/
-
-/*func simulate_mongo_connection(mConnection MongoConnection) {
-	defer connectionWaitGroup.Done()
-	// TODO: from command line args
-	var conn, error = net.Dial("tcp", "localhost:27017")
-	if error != nil {
-		fmt.Printf("Failed to connect to the mongod...\n")
-		return
-	}
-	var packetWaitGroup sync.WaitGroup
-	for _, mPacket := range mConnection.packetList {
-		packetWaitGroup.Add(1)
-		go replay(conn, mPacket, packetWaitGroup)
-	}
-}*/
-
-/*func replay(conn net.Conn,
-	mPacket MongoPacket,
-	wg sync.WaitGroup) {
-	
-	// Calculate our wait time as the TCP packet unix timestamp delta
-	waitTime := mPacket.unixTimestamp
-	timer := time.NewTimer(time.Duration(waitTime) * time.Millisecond)
-	// Done with set up, but wait for all other replay go routines to be
-	wg.Done()
-	wg.Wait()
-	// Delay write by the time delta
-	<-timer.C
-	conn.Write(mPacket.payload)
-	// Read the tcp reply into a buffer to discard
-	conn.Read(readBuffer[0:])
-}*/

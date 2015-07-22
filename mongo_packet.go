@@ -8,7 +8,7 @@ import (
 )
 
 // mongo wire protocol header field offset
-var OFFSET int = 4
+const OFFSET int = 4
 
 // earliest packet timestamp
 var MIN_UNIX_TIMESTAMP int64 = 0
